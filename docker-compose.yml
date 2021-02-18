@@ -1,0 +1,63 @@
+version: '3'
+volumes:
+  postgresql_data:
+  node_modules:
+
+services:
+  database:
+    container_name: pos_database
+    hostname: pos_database
+    image: postgres:12-alpine
+    environment:
+      - "POSTGRES_USER=pos"
+      - "POSTGRES_PASSWORD=pos"
+      - "POSTGRES_DB=pos"
+    volumes:
+      - postgresql_data:/var/lib/postgresql/data
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U pos" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "54321:5432"
+
+  primary:
+    container_name: pos_primary
+    hostname: pos_primary
+    build:
+      context: ./
+      dockerfile: Dockerfile
+    image: pos
+    command: >
+      bash -xc "
+        python -m pip install -r requirements.txt &&
+        python manage.py migrate &&
+        python manage.py runserver 0.0.0.0:8000
+      "
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/pos
+      - ./emails/:/tmp/emails/
+    depends_on:
+      database:
+        condition: service_healthy
+
+  web:
+    container_name: pos_web
+    hostname: pos_web
+    image: node:15
+    command: sh -c "
+      cd /pos &&
+      echo 'Installing dependencies' &&
+      npm install &&
+      echo 'Starting Server' &&
+      npm run dev
+      "
+    volumes:
+      - .:/pos
+      - node_modules:/pos/node_modules/
+    ports:
+      - "3000:3000"
